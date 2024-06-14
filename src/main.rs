@@ -1,6 +1,3 @@
-use std::iter::zip;
-
-
 #[derive(Copy, Clone)]
 enum Part {
     SolidBooster {
@@ -91,6 +88,14 @@ const EFF_FUEL_DENSITY: f32 = 0.005 * 20.0 / 9.0;
 const GRAVITY: f32 = 9.81;
 
 
+struct StageInfo {
+    wet_mass: f32,
+    dry_mass: f32,
+    twr: f32,
+    delta_v: f32
+}
+
+
 fn get_part_fuel(parts: &[Part]) -> f32 {
     let mut sum: f32 = 0.0;
     for part in parts {
@@ -155,39 +160,38 @@ fn rocket_stages(parts: &[Part]) -> Vec<Vec<Part>> {
 }
 
 
-fn print_stages(stages: &Vec<Vec<Part>>) {
+fn print_stage_info(stages: &Vec<StageInfo>) {
     for (i, stage) in stages.iter().enumerate() {
         print_summary(stage, &format!("STAGE  {i}"));
     }
 }
 
 
-fn print_summary(parts: &[Part], header: &str) {
-    let part_mass = get_stage_mass_dry(parts);
-    let fuel_mass = get_part_fuel(parts) * EFF_FUEL_DENSITY;
-    let solid_fuel_mass = get_part_solid_fuel(parts) * SOLID_FUEL_DENSITY;
-    let total_mass = part_mass + fuel_mass + solid_fuel_mass;
+fn print_summary(stage_info: &StageInfo, header: &str) {
     println!("=========== {header:8} ==========");
-    println!("          PART MASS: {part_mass:.2}t");
-    println!("          FUEL MASS: {fuel_mass:.2}t");
-    println!("  FUEL MASS (SOLID): {solid_fuel_mass:.2}t");
-    println!("         TOTAL MASS: {total_mass:.2}t");
+    println!("        PART MASS: {:.2}t", stage_info.dry_mass);
+    println!("        FUEL MASS: {:.2}t", stage_info.wet_mass - stage_info.dry_mass);
+    println!("         WET MASS: {:.2}t", stage_info.wet_mass);
+    println!("          DELTA-V: {}m/s", stage_info.delta_v as i32);
+    println!(" THRUST TO WEIGHT: {:.2}", stage_info.twr);
     println!("");
 }
 
 
-fn integrate_dv(stage: &[Part], payload_mass: f32) -> f32 {
+fn integrate_dv(stage: &[Part], payload_mass: f32) -> (f32, f32) {
     const DT: f32 = 1.0;
 
     let mut fuel = get_part_fuel(stage);
     let mut mass = payload_mass + get_stage_mass_wet(stage);
 
     let mut liquid_thrust: f32 = 0.0;
+    let mut solid_thrust: f32 = 0.0;
     let mut liquid_mass_flow: f32 = 0.0;
     let mut solid_rockets: Vec<(f32, f32, f32)> = Vec::new();
     for part in stage {
         if let Part::SolidBooster{ fuel, thrust_asl, isp_asl, ..} = part {
             solid_rockets.push((*fuel, *thrust_asl, thrust_asl / (isp_asl * GRAVITY)));
+            solid_thrust += thrust_asl;
         }
         if let Part::Engine{ thrust_asl, isp_asl, .. } = part {
             liquid_thrust += thrust_asl;
@@ -218,7 +222,28 @@ fn integrate_dv(stage: &[Part], payload_mass: f32) -> f32 {
 
         delta_v += DT * thrust / mass;
     }
-    delta_v
+    (delta_v, solid_thrust + liquid_thrust)
+}
+
+
+fn analyze_stages(stages: &Vec<Vec<Part>>) -> Vec<StageInfo> {
+    let mut stage_info = Vec::new();
+    for (i, stage) in stages.iter().enumerate() {
+        let mut payload_mass = 0.0;
+        for j in (i+1)..stages.len() {
+            payload_mass += get_stage_mass_wet(&stages[j])
+        }
+        let rocket_mass = payload_mass +  get_stage_mass_wet(stage);
+        let (deltav, thrust) = integrate_dv(&stage, payload_mass);
+
+        stage_info.push(StageInfo{
+            wet_mass: get_stage_mass_wet(stage),
+            dry_mass: get_stage_mass_dry(stage),
+            delta_v: deltav,
+            twr: thrust / (GRAVITY * rocket_mass),
+        });
+    }
+    stage_info
 }
 
 
@@ -232,18 +257,9 @@ fn main() {
     ];
 
     let stages = rocket_stages(&test_rocket);
-    print_stages(&stages);
-    print_summary(&test_rocket, " ROCKET ");
+    let stage_info = analyze_stages(&stages);
 
-    let mut total_deltav = 0.0;
-    for (i, stage) in stages.iter().enumerate() {
-        let mut payload_mass = 0.0;
-        for j in (i+1)..stages.len() {
-            payload_mass += get_stage_mass_wet(&stages[j])
-        }
-        let deltav = integrate_dv(&stage, payload_mass);
-        total_deltav += deltav;
-        println!("STAGE {i} DELTA-V: {}m/s", deltav as i32);
-    }
+    print_stage_info(&stage_info);
+    let total_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
     println!("TOTAL DELTA-V: {}m/s", total_deltav as i32);
 }
