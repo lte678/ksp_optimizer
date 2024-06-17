@@ -1,3 +1,5 @@
+mod kerbin;
+
 use rand::prelude::*;
 
 
@@ -203,17 +205,19 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
     let mut fuel = get_part_fuel(stage);
     let mut mass = payload_mass + get_stage_mass_wet(stage);
 
-    let mut liquid_thrust: f32 = 0.0;
+    let mut liquid_thrust_asl: f32 = 0.0;
+    let mut liquid_thrust_vac: f32 = 0.0;
     let mut solid_thrust: f32 = 0.0;
     let mut liquid_mass_flow: f32 = 0.0;
-    let mut solid_rockets: Vec<(f32, f32, f32)> = Vec::new();
+    let mut solid_rockets: Vec<(f32, f32, f32, f32)> = Vec::new();
     for part in stage {
-        if let Part::SolidBooster{ fuel, thrust_asl, isp_asl, ..} = part {
-            solid_rockets.push((*fuel, *thrust_asl, thrust_asl / (isp_asl * GRAVITY)));
+        if let Part::SolidBooster{ fuel, thrust_asl, thrust_vac, isp_asl, ..} = part {
+            solid_rockets.push((*fuel, *thrust_asl, *thrust_vac, thrust_asl / (isp_asl * GRAVITY)));
             solid_thrust += thrust_asl;
         }
-        if let Part::Engine{ thrust_asl, isp_asl, .. } = part {
-            liquid_thrust += thrust_asl;
+        if let Part::Engine{ thrust_asl,  thrust_vac, isp_asl, .. } = part {
+            liquid_thrust_asl += thrust_asl;
+            liquid_thrust_vac += thrust_vac;
             liquid_mass_flow += thrust_asl / (isp_asl * GRAVITY)
         }
     }
@@ -223,19 +227,20 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
     let mut altitude = altitude;
     let mut velocity = velocity;
     let mut burning = true;
-    while(burning) {
+    while burning {
         burning = false;
+        let atmo_p = kerbin::get_pressure(altitude);
         let mut thrust = 0.0;
-        if fuel > 0.0 && liquid_thrust > 1e-6 {
+        if fuel > 0.0 && liquid_thrust_asl > 1e-6 {
             burning = true;
-            thrust += liquid_thrust;
+            thrust += liquid_thrust_asl * atmo_p + liquid_thrust_vac * (1.0 - atmo_p);
             mass -= liquid_mass_flow * DT;
             fuel -= (liquid_mass_flow / EFF_FUEL_DENSITY) * DT;
         }
-        for (s_fuel, s_thrust, s_mass_flow) in &mut solid_rockets {
+        for (s_fuel, s_thrust, s_thrust_vac, s_mass_flow) in &mut solid_rockets {
             if *s_fuel > 0.0 && *s_thrust > 1e-6{
                 burning = true;
-                thrust += *s_thrust;
+                thrust += *s_thrust * atmo_p + *s_thrust_vac * (1.0 - atmo_p);
                 mass -= *s_mass_flow * DT;
                 *s_fuel -= (*s_mass_flow / SOLID_FUEL_DENSITY) * DT;
             }
@@ -245,7 +250,7 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
         altitude += velocity * DT;
         velocity += (thrust / mass - GRAVITY) * DT;
     }
-    (delta_v, solid_thrust + liquid_thrust, altitude, velocity)
+    (delta_v, solid_thrust + liquid_thrust_asl, altitude, velocity)
 }
 
 
@@ -330,7 +335,7 @@ fn main() {
     println!("INITIAL DELTA-V: {}m/s", current_deltav as i32);
 
     let mut i = 0;
-    while i < 10000 {
+    while i < 50000 {
         let rocket_permutation = permute_parts(&current_rocket);
         let permutation_stages = rocket_stages(&rocket_permutation);
         let permutation_info = analyze_stages(&permutation_stages);
@@ -340,7 +345,7 @@ fn main() {
         if permutation_deltav > current_deltav && check_validity(&permutation_stages, &permutation_info) {
             current_rocket = rocket_permutation;
             current_deltav = permutation_deltav;
-            println!("i={i}, NEW STAGE: {}", stage_description.join(" "));
+            println!("i={i}, NEW STAGE: {}", stage_description.join(", "));
             print!("DELTA-V: {}m/s", permutation_deltav as i32);
             print!(" | TWR: {}", permutation_info[0].twr);
             if permutation_info.len() > 1 {
@@ -355,7 +360,7 @@ fn main() {
     let stage_info = analyze_stages(&stages);
 
     print_stage_info(&stage_info);
-    let mut current_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
+    let current_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
     println!("FINAL DELTA-V: {}m/s", current_deltav as i32);
 }
  
