@@ -1,3 +1,6 @@
+use rand::prelude::*;
+
+
 #[derive(Copy, Clone)]
 enum Part {
     SolidBooster {
@@ -32,6 +35,18 @@ enum Part {
     }
 }
 
+
+impl Part {
+    fn get_name(&self) -> &'static str {
+        match self {
+            Part::SolidBooster { name, .. } => name,
+            Part::Engine { name, .. } => name,
+            Part::Tank { name, ..} => name,
+            Part::Decoupler { name, .. } => name,
+            Part::Structure { name, .. } => name,
+        }
+    }
+}
 
 const PART_TD12: Part = Part::Decoupler {
     name: "TD-12", mass: 0.04 };
@@ -92,7 +107,9 @@ struct StageInfo {
     wet_mass: f32,
     dry_mass: f32,
     twr: f32,
-    delta_v: f32
+    delta_v: f32,
+    burnout_altitude: f32,
+    burnout_velocity: f32,
 }
 
 
@@ -174,12 +191,14 @@ fn print_summary(stage_info: &StageInfo, header: &str) {
     println!("         WET MASS: {:.2}t", stage_info.wet_mass);
     println!("          DELTA-V: {}m/s", stage_info.delta_v as i32);
     println!(" THRUST TO WEIGHT: {:.2}", stage_info.twr);
+    println!(" BURNOUT ALTITUDE: {}km", (stage_info.burnout_altitude / 1000.0) as i32);
+    println!(" BURNOUT VELOCITY: {}m/s", stage_info.burnout_velocity as i32);
     println!("");
 }
 
 
-fn integrate_dv(stage: &[Part], payload_mass: f32) -> (f32, f32) {
-    const DT: f32 = 1.0;
+fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32) -> (f32, f32, f32, f32) {
+    const DT: f32 = 0.01;
 
     let mut fuel = get_part_fuel(stage);
     let mut mass = payload_mass + get_stage_mass_wet(stage);
@@ -201,18 +220,20 @@ fn integrate_dv(stage: &[Part], payload_mass: f32) -> (f32, f32) {
 
     // Integrate the force over time
     let mut delta_v = 0.0; 
+    let mut altitude = altitude;
+    let mut velocity = velocity;
     let mut burning = true;
     while(burning) {
         burning = false;
         let mut thrust = 0.0;
-        if fuel > 0.0 {
+        if fuel > 0.0 && liquid_thrust > 1e-6 {
             burning = true;
             thrust += liquid_thrust;
             mass -= liquid_mass_flow * DT;
             fuel -= (liquid_mass_flow / EFF_FUEL_DENSITY) * DT;
         }
         for (s_fuel, s_thrust, s_mass_flow) in &mut solid_rockets {
-            if *s_fuel > 0.0 {
+            if *s_fuel > 0.0 && *s_thrust > 1e-6{
                 burning = true;
                 thrust += *s_thrust;
                 mass -= *s_mass_flow * DT;
@@ -221,45 +242,120 @@ fn integrate_dv(stage: &[Part], payload_mass: f32) -> (f32, f32) {
         }
 
         delta_v += DT * thrust / mass;
+        altitude += velocity * DT;
+        velocity += (thrust / mass - GRAVITY) * DT;
     }
-    (delta_v, solid_thrust + liquid_thrust)
+    (delta_v, solid_thrust + liquid_thrust, altitude, velocity)
 }
 
 
 fn analyze_stages(stages: &Vec<Vec<Part>>) -> Vec<StageInfo> {
     let mut stage_info = Vec::new();
+    let mut alt = 0.0;
+    let mut vel = 0.0;
     for (i, stage) in stages.iter().enumerate() {
         let mut payload_mass = 0.0;
         for j in (i+1)..stages.len() {
             payload_mass += get_stage_mass_wet(&stages[j])
         }
         let rocket_mass = payload_mass +  get_stage_mass_wet(stage);
-        let (deltav, thrust) = integrate_dv(&stage, payload_mass);
-
+        let (deltav, thrust, a, v) = integrate_dv(&stage, payload_mass, alt, vel);
+        alt = a;
+        vel = v;
         stage_info.push(StageInfo{
             wet_mass: get_stage_mass_wet(stage),
             dry_mass: get_stage_mass_dry(stage),
             delta_v: deltav,
             twr: thrust / (GRAVITY * rocket_mass),
+            burnout_altitude: alt,
+            burnout_velocity: vel,
         });
     }
     stage_info
 }
 
 
+fn permute_parts(base_parts: &[Part]) -> Vec<Part> {
+    let mut parts = base_parts.to_vec();
+
+    loop {
+        if (rand::random::<f32>() % 1.0) > 0.50 {
+            let part_type = rand::random::<usize>() % PART_CATALOGUE.len(); 
+            let part_i = rand::random::<usize>() % (parts.len() + 1); 
+            parts.insert(part_i, PART_CATALOGUE[part_type]);
+        } else {
+            if parts.len() > 0 {
+                let part_i = rand::random::<usize>() % parts.len(); 
+                parts.remove(part_i);
+            }
+        }
+        // Allow multiple permutations to happen at once.
+        if (rand::random::<f32>() % 1.0) > 0.6 {
+            break;
+        }
+    }
+    parts
+}
+
+
+fn check_validity(stages: &Vec<Vec<Part>>, stage_info: &[StageInfo]) -> bool {
+    let total_mass: f32 = stage_info.iter().map(|s| s.wet_mass).sum();
+    let contains_command_pod = stages[stages.len()-1].iter().any(|x| x.get_name() == "Mk1 Command Pod");
+    let second_stage_twr = if stage_info.len() > 1 {
+        stage_info[1].twr > 0.5
+    } else {
+        true
+    };
+
+    total_mass < 18.0 &&
+    contains_command_pod &&
+    stage_info[0].twr > 1.5 && second_stage_twr
+}
+
+
 fn main() {
-    let test_rocket = [
+    let mut current_rocket: Vec<Part> = [
         PART_RT10,
         PART_TD12,
         PART_LVT45,
         PART_FLT100,
         PART_MK1_POD
-    ];
+    ].to_vec();
 
-    let stages = rocket_stages(&test_rocket);
+    let stages = rocket_stages(&current_rocket);
     let stage_info = analyze_stages(&stages);
 
     print_stage_info(&stage_info);
-    let total_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
-    println!("TOTAL DELTA-V: {}m/s", total_deltav as i32);
+    let mut current_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
+    println!("INITIAL DELTA-V: {}m/s", current_deltav as i32);
+
+    let mut i = 0;
+    while i < 10000 {
+        let rocket_permutation = permute_parts(&current_rocket);
+        let permutation_stages = rocket_stages(&rocket_permutation);
+        let permutation_info = analyze_stages(&permutation_stages);
+        let permutation_deltav: f32 = permutation_info.iter().map(|s| s.delta_v).sum();
+        
+        let stage_description: Vec<&str> = rocket_permutation.iter().map(|s| s.get_name()).collect();
+        if permutation_deltav > current_deltav && check_validity(&permutation_stages, &permutation_info) {
+            current_rocket = rocket_permutation;
+            current_deltav = permutation_deltav;
+            println!("i={i}, NEW STAGE: {}", stage_description.join(" "));
+            print!("DELTA-V: {}m/s", permutation_deltav as i32);
+            print!(" | TWR: {}", permutation_info[0].twr);
+            if permutation_info.len() > 1 {
+                print!(" | TWR (2. STAGE): {}", permutation_info[1].twr);
+            }
+            print!("\n\n");
+        }
+        i += 1;
+    }
+
+    let stages = rocket_stages(&current_rocket);
+    let stage_info = analyze_stages(&stages);
+
+    print_stage_info(&stage_info);
+    let mut current_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
+    println!("FINAL DELTA-V: {}m/s", current_deltav as i32);
 }
+ 
