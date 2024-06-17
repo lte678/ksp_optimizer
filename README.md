@@ -8,7 +8,7 @@ The script is setup to find an optimal rocket with less than 18t mass, and a TWR
 
 Here is one of the configurations it discovers:
 
-´´´
+```
 i=14665, NEW STAGE: FL-T200, FL-T400, FL-T200, LV-T30, FL-T100, FL-T400, RT-5, TD-12, Mk1 Command Pod, FL-T200, LV-T30, FL-T100, FL-T100, FL-T100, FL-T200, FL-T100, FL-T200
 DELTA-V: 4667m/s | TWR: 2.105788 | TWR (2. STAGE): 2.7107396
 
@@ -31,4 +31,4 @@ DELTA-V: 4667m/s | TWR: 2.105788 | TWR (2. STAGE): 2.7107396
  BURNOUT VELOCITY: 3237m/s
 
 FINAL DELTA-V: 4667m/s
-´´´
+```
