@@ -1,4 +1,4 @@
-use std::{iter::zip, sync::atomic::AtomicBool};
+use std::iter::zip;
 
 pub const ATMOSPHERE: &[(f32, f32, f32)] = &[
     (0.0    , 1.000, 1.225),

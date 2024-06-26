@@ -1,9 +1,15 @@
+mod vector;
 mod kerbin;
+mod integrator;
 
+use core::fmt;
+use std::fmt::Debug;
+
+use crate::vector::Vector;
 use rand::prelude::*;
 
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum Part {
     SolidBooster {
         name: &'static str,
@@ -47,6 +53,13 @@ impl Part {
             Part::Decoupler { name, .. } => name,
             Part::Structure { name, .. } => name,
         }
+    }
+}
+
+
+impl fmt::Display for Part {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.get_name())
     }
 }
 
@@ -199,11 +212,36 @@ fn print_summary(stage_info: &StageInfo, header: &str) {
 }
 
 
-fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32) -> (f32, f32, f32, f32) {
-    const DT: f32 = 0.01;
+fn get_burnout_times(stage: &[Part]) -> Vec<f32> {
+    let mut burnout_times = Vec::new();
+    let fuel_mass = get_part_fuel(stage) * EFF_FUEL_DENSITY;
+    let mut liquid_mass_flow: f32 = 0.0;
+    for part in stage {
+        if let Part::SolidBooster{ fuel, thrust_asl, isp_asl, ..} = part {
+            let solid_fuel = *fuel * SOLID_FUEL_DENSITY;
+            let solid_mass_flow = thrust_asl / (isp_asl * GRAVITY);
+            if solid_fuel > 1e-6 && solid_mass_flow > 1e-6 {
+                burnout_times.push(solid_fuel / solid_mass_flow);
+            }
+        }
+        if let Part::Engine{ thrust_asl, isp_asl, .. } = part {
+            liquid_mass_flow += thrust_asl / (isp_asl * GRAVITY);
+        }
+    }
+    if liquid_mass_flow > 1e-6 && fuel_mass > 1e-6 {
+        burnout_times.push(fuel_mass / liquid_mass_flow);
+    }
+    
+    burnout_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    burnout_times
+}
 
-    let mut fuel = get_part_fuel(stage);
-    let mut mass = payload_mass + get_stage_mass_wet(stage);
+
+fn flight_dynamics(t: f32, state: &Vector<3>, stage: &[Part], payload_mass: f32) -> Vector<3> {
+    // The state consists of delta-velocity, velocity and height
+    let [_, v, altitude] = state.data;
+
+    let fuel_mass = get_part_fuel(stage) * EFF_FUEL_DENSITY;
 
     let mut liquid_thrust_asl: f32 = 0.0;
     let mut liquid_thrust_vac: f32 = 0.0;
@@ -212,7 +250,7 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
     let mut solid_rockets: Vec<(f32, f32, f32, f32)> = Vec::new();
     for part in stage {
         if let Part::SolidBooster{ fuel, thrust_asl, thrust_vac, isp_asl, ..} = part {
-            solid_rockets.push((*fuel, *thrust_asl, *thrust_vac, thrust_asl / (isp_asl * GRAVITY)));
+            solid_rockets.push((*fuel * SOLID_FUEL_DENSITY, *thrust_asl, *thrust_vac, thrust_asl / (isp_asl * GRAVITY)));
             solid_thrust += thrust_asl;
         }
         if let Part::Engine{ thrust_asl,  thrust_vac, isp_asl, .. } = part {
@@ -222,37 +260,63 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
         }
     }
 
-    // Integrate the force over time
-    let mut delta_v = 0.0; 
-    let mut altitude = altitude;
-    let mut velocity = velocity;
-    let mut burning = true;
-    while burning {
-        burning = false;
-        let atmo_p = kerbin::get_pressure(altitude);
-        let mut thrust = 0.0;
-        if fuel > 0.0 && liquid_thrust_asl > 1e-6 {
-            burning = true;
-            thrust += liquid_thrust_asl * atmo_p + liquid_thrust_vac * (1.0 - atmo_p);
-            mass -= liquid_mass_flow * DT;
-            fuel -= (liquid_mass_flow / EFF_FUEL_DENSITY) * DT;
-        }
-        for (s_fuel, s_thrust, s_thrust_vac, s_mass_flow) in &mut solid_rockets {
-            if *s_fuel > 0.0 && *s_thrust > 1e-6{
-                burning = true;
-                thrust += *s_thrust * atmo_p + *s_thrust_vac * (1.0 - atmo_p);
-                mass -= *s_mass_flow * DT;
-                *s_fuel -= (*s_mass_flow / SOLID_FUEL_DENSITY) * DT;
-            }
-        }
-
-        delta_v += DT * thrust / mass;
-        altitude += velocity * DT;
-        velocity += (thrust / mass - GRAVITY) * DT;
+    let atmo_p = kerbin::get_pressure(altitude);
+    let mut thrust = 0.0;
+    let mut mass = payload_mass + get_stage_mass_wet(stage);
+    if fuel_mass > liquid_mass_flow * t && liquid_thrust_asl > 1e-6 {
+        thrust += liquid_thrust_asl * atmo_p + liquid_thrust_vac * (1.0 - atmo_p);
     }
-    (delta_v, solid_thrust + liquid_thrust_asl, altitude, velocity)
+    mass -= fuel_mass.min(liquid_mass_flow * t);
+    
+    for (s_fuel_mass, s_thrust, s_thrust_vac, s_mass_flow) in &mut solid_rockets {
+        if *s_fuel_mass > *s_mass_flow * t && *s_thrust > 1e-6 {
+            thrust += *s_thrust * atmo_p + *s_thrust_vac * (1.0 - atmo_p);
+        }
+        mass -= s_fuel_mass.min(*s_mass_flow * t);
+    }
+
+    let a = thrust / mass;
+    let a_real = a - GRAVITY;
+    Vector{data: [a, a_real, v]}
 }
 
+
+fn integrate_dv2(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32) -> (f32, f32, f32, f32) {
+    let f = |t, state| flight_dynamics(t, &state, stage, payload_mass);
+
+    let mut times = get_burnout_times(stage);
+    times.insert(0, 0.0);
+
+    let mut delta_v = 0.0;
+    let mut velocity = 0.0;
+    let mut altitude = 0.0;
+
+    for t_i in 0..times.len()-1 {
+        let (res, res_info) = integrator::rk45(
+            &f, 
+            Vector{ data: [0.0, velocity, altitude] },
+            times[t_i]+1e-6, times[t_i+1]-1e-3,
+            Vector{ data: [1e-3, 1e-9, 1e-9]},
+            1e-4
+        );
+        delta_v += res[0];
+        velocity += res[1];
+        altitude += res[2];
+    }
+
+    // Get thrust information
+    let mut thrust = 0.0;
+    for part in stage {
+        if let Part::SolidBooster{ thrust_asl, .. } = part {
+            thrust += thrust_asl;
+        }
+        if let Part::Engine{ thrust_asl, .. } = part {
+            thrust += thrust_asl;
+        }
+    }
+
+    (delta_v, thrust, altitude, velocity)
+}
 
 fn analyze_stages(stages: &Vec<Vec<Part>>) -> Vec<StageInfo> {
     let mut stage_info = Vec::new();
@@ -264,7 +328,7 @@ fn analyze_stages(stages: &Vec<Vec<Part>>) -> Vec<StageInfo> {
             payload_mass += get_stage_mass_wet(&stages[j])
         }
         let rocket_mass = payload_mass +  get_stage_mass_wet(stage);
-        let (deltav, thrust, a, v) = integrate_dv(&stage, payload_mass, alt, vel);
+        let (deltav, thrust, a, v) = integrate_dv2(&stage, payload_mass, alt, vel);
         alt = a;
         vel = v;
         stage_info.push(StageInfo{
@@ -284,18 +348,18 @@ fn permute_parts(base_parts: &[Part]) -> Vec<Part> {
     let mut parts = base_parts.to_vec();
 
     loop {
-        if (rand::random::<f32>() % 1.0) > 0.50 {
-            let part_type = rand::random::<usize>() % PART_CATALOGUE.len(); 
-            let part_i = rand::random::<usize>() % (parts.len() + 1); 
+        if (random::<f32>() % 1.0) > 0.50 {
+            let part_type = random::<usize>() % PART_CATALOGUE.len(); 
+            let part_i = random::<usize>() % (parts.len() + 1); 
             parts.insert(part_i, PART_CATALOGUE[part_type]);
         } else {
             if parts.len() > 0 {
-                let part_i = rand::random::<usize>() % parts.len(); 
+                let part_i = random::<usize>() % parts.len(); 
                 parts.remove(part_i);
             }
         }
         // Allow multiple permutations to happen at once.
-        if (rand::random::<f32>() % 1.0) > 0.6 {
+        if (random::<f32>() % 1.0) > 0.6 {
             break;
         }
     }
