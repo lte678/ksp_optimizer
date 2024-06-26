@@ -5,8 +5,19 @@ mod integrator;
 use core::fmt;
 use std::fmt::Debug;
 
-use crate::vector::Vector;
+use clap::Parser;
 use rand::prelude::*;
+
+use crate::vector::Vector;
+
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Number of rockets to generate
+    #[arg(short, long, default_value_t = 10000)]
+    count: usize,
+}
 
 
 #[derive(Debug, Copy, Clone)]
@@ -348,18 +359,29 @@ fn permute_parts(base_parts: &[Part]) -> Vec<Part> {
     let mut parts = base_parts.to_vec();
 
     loop {
-        if (random::<f32>() % 1.0) > 0.50 {
+        let r = random::<f32>() % 1.0;
+        if r > 0.9 {
+            // Add new
             let part_type = random::<usize>() % PART_CATALOGUE.len(); 
             let part_i = random::<usize>() % (parts.len() + 1); 
             parts.insert(part_i, PART_CATALOGUE[part_type]);
+        } else if r > 0.2 {
+            // Replace
+            if parts.len() > 0 {
+                let part_i = random::<usize>() % parts.len(); 
+                parts.remove(part_i);
+                let part_type = random::<usize>() % PART_CATALOGUE.len();
+                parts.insert(part_i, PART_CATALOGUE[part_type]);
+            }
         } else {
+            // Remove
             if parts.len() > 0 {
                 let part_i = random::<usize>() % parts.len(); 
                 parts.remove(part_i);
             }
         }
         // Allow multiple permutations to happen at once.
-        if (random::<f32>() % 1.0) > 0.6 {
+        if (random::<f32>() % 1.0) > 0.3 {
             break;
         }
     }
@@ -382,15 +404,8 @@ fn check_validity(stages: &Vec<Vec<Part>>, stage_info: &[StageInfo]) -> bool {
 }
 
 
-fn main() {
-    let mut current_rocket: Vec<Part> = [
-        PART_RT10,
-        PART_TD12,
-        PART_LVT45,
-        PART_FLT100,
-        PART_MK1_POD
-    ].to_vec();
-
+fn optimize_rocket(starting_rocket: &[Part], iterations: usize) {
+    let mut current_rocket: Vec<Part> = starting_rocket.to_vec();
     let stages = rocket_stages(&current_rocket);
     let stage_info = analyze_stages(&stages);
 
@@ -399,7 +414,7 @@ fn main() {
     println!("INITIAL DELTA-V: {}m/s", current_deltav as i32);
 
     let mut i = 0;
-    while i < 50000 {
+    while i < iterations {
         let rocket_permutation = permute_parts(&current_rocket);
         let permutation_stages = rocket_stages(&rocket_permutation);
         let permutation_info = analyze_stages(&permutation_stages);
@@ -426,5 +441,20 @@ fn main() {
     print_stage_info(&stage_info);
     let current_deltav: f32 = stage_info.iter().map(|s| s.delta_v).sum();
     println!("FINAL DELTA-V: {}m/s", current_deltav as i32);
+}
+
+
+fn main() {
+    let args = Args::parse();
+
+    let starting_rocket: Vec<Part> = [
+        PART_RT10,
+        PART_TD12,
+        PART_LVT45,
+        PART_FLT100,
+        PART_MK1_POD
+    ].to_vec();
+
+    optimize_rocket(&starting_rocket, args.count);
 }
  
