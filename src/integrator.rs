@@ -39,14 +39,14 @@ where
         let y2 = y + (16.0/135.0) * k1 + (6656.0/12825.0) * k3 + (28561.0/56430.0) * k4 - (9.0/50.0) * k5 + (2.0/55.0) * k6;
 
         let error =  ((y2 - y1).abs() + EPSILON) / (atol + rtol*y2.abs());
-        let error = (error * error).sum().powf(0.5);
+        let error = (error * error).sum();
         // println!("error: {}, f({}): {:?}, y: {:?}", error, t+h, f(t+h, y), y2);
         if error <= 1.0 {
             t += h;
             y = y1;
         }
         // Optimize step size to achieve desired accuracy
-        h *= 0.84 * error.powf(-0.25);
+        h *= 0.84 * error.powf(-0.125);
 
         step_count += 1;
     }
