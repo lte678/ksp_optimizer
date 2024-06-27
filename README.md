@@ -9,26 +9,32 @@ The script is setup to find an optimal rocket with less than 18t mass, and a TWR
 Here is one of the configurations it discovers:
 
 ```
-i=14665, NEW STAGE: FL-T200, FL-T400, FL-T200, LV-T30, FL-T100, FL-T400, RT-5, TD-12, Mk1 Command Pod, FL-T200, LV-T30, FL-T100, FL-T100, FL-T100, FL-T200, FL-T100, FL-T200
-DELTA-V: 4667m/s | TWR: 2.105788 | TWR (2. STAGE): 2.7107396
+i=3821, NEW STAGE: RT-5 LV-T30 FL-T400 FL-T400 TD-12  // LV-T30 FL-T400 FL-T400 FL-T400 FL-T200 FL-T100 Mk1 Command Pod Mk16 Parachute 
+DELTA-V: 4541m/s | TWR: 2.0940354 | TWR (2. STAGE): 1.9678526
 
 =========== STAGE  0 ==========
-        PART MASS: 2.55t
-        FUEL MASS: 7.55t
-         WET MASS: 10.10t
-          DELTA-V: 1490m/s
- THRUST TO WEIGHT: 2.11
- BURNOUT ALTITUDE: 24km
- BURNOUT VELOCITY: 682m/s
+        PART MASS: 2.24t
+        FUEL MASS: 5.05t
+         WET MASS: 7.29t
+          DELTA-V: 828m/s
+ THRUST TO WEIGHT: 2.09
+ BURNOUT ALTITUDE: 9km
+ BURNOUT VELOCITY: 436m/s
 
 =========== STAGE  1 ==========
-        PART MASS: 2.71t
-        FUEL MASS: 5.00t
-         WET MASS: 7.71t
-          DELTA-V: 3177m/s
- THRUST TO WEIGHT: 2.71
- BURNOUT ALTITUDE: 131km
- BURNOUT VELOCITY: 3237m/s
+        PART MASS: 3.13t
+        FUEL MASS: 7.50t
+         WET MASS: 10.63t
+          DELTA-V: 3712m/s
+ THRUST TO WEIGHT: 1.97
+ BURNOUT ALTITUDE: 156km
+ BURNOUT VELOCITY: 3653m/s
 
-FINAL DELTA-V: 4667m/s
+============= ROCKET ============
+      LAUNCH MASS: 17.92t
+          DELTA-V: 4541m/s
+       PART COUNT: 13
+
+FINAL DELTA-V: 4541m/s
 ```
+
