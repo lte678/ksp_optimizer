@@ -75,7 +75,7 @@ fn check_validity(rocket_info: &RocketInfo) -> bool {
         true
     };
 
-    rocket_info.launch_mass < 18.0 &&
+    rocket_info.launch_mass < 50.0 &&
     contains_command_pod &&
     has_parachute &&
     rocket_info.stage_info[0].twr > 1.5 && second_stage_twr
@@ -87,11 +87,12 @@ fn compare_rockets(old_rocket: &RocketInfo, new_rocket: &RocketInfo) -> bool {
     if !check_validity(new_rocket) {
         return false;
     }
-    if new_rocket.delta_v < old_rocket.delta_v - 0.1 {
+    //if new_rocket.delta_v < old_rocket.delta_v - 0.1 {
+    if new_rocket.final_altitude < old_rocket.final_altitude {
         // We are worse in delta-V
         return false;
     }
-    if (new_rocket.delta_v - old_rocket.delta_v).abs() < 0.1 &&
+    if (new_rocket.final_altitude - old_rocket.final_altitude).abs() < 0.1 &&
         new_rocket.part_count >= old_rocket.part_count {
         // We are equal in delta-V, but use more parts.
         return false;
@@ -118,10 +119,11 @@ fn optimize_rocket(starting_rocket: &[Part], iterations: usize) {
             print!("i={i}, NEW STAGE: ");
             print_rocket(&current_info.stages);
             print!("\nDELTA-V: {}m/s", current_info.delta_v as i32);
-            print!(" | TWR: {}", current_info.stage_info[0].twr);
+            print!(" | TWR: {:.1}", current_info.stage_info[0].twr);
             if current_info.stage_info.len() > 1 {
-                print!(" | TWR (2. STAGE): {}", current_info.stage_info[1].twr);
+                print!(" | TWR (2. STAGE): {:.1}", current_info.stage_info[1].twr);
             }
+            print!(" | Alt: {} km", (current_info.final_altitude / 1000.0) as i64);
             print!("\n\n");
         }
         i += 1;

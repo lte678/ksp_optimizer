@@ -26,6 +26,7 @@ pub struct RocketInfo {
     pub part_count: usize,
     pub stage_info: Vec<StageInfo>,
     pub stages: Vec<Stage>,
+    pub final_altitude: f32,
 }
 
 
@@ -139,14 +140,14 @@ fn integrate_dv(stage: &[Part], payload_mass: f32, altitude: f32, velocity: f32)
     for t_i in 0..times.len()-1 {
         let (res, _) = integrator::rk45(
             &f, 
-            Vector{ data: [0.0, velocity, altitude] },
+            Vector{ data: [delta_v, velocity, altitude] },
             times[t_i]+1e-6, times[t_i+1]-1e-3,
             Vector{ data: [1e-3, 1e-9, 1e-9]},
             1e-4
         );
-        delta_v += res[0];
-        velocity += res[1];
-        altitude += res[2];
+        delta_v  = res[0];
+        velocity = res[1];
+        altitude = res[2];
     }
 
     // Get thrust information for TWR ratio calculation. This assumes nothing has burned out in the stage.
@@ -194,6 +195,7 @@ pub fn analyze_rocket(rocket: &Vec<Part>) -> RocketInfo {
     let launch_mass = part_mass_wet(&rocket);
     let delta_v=  stage_info.iter().map(|s| s.delta_v).sum();
     let part_count = rocket.len();
+    let final_altitude = stage_info.last().unwrap().burnout_altitude;
 
     RocketInfo {
         launch_mass,
@@ -201,5 +203,6 @@ pub fn analyze_rocket(rocket: &Vec<Part>) -> RocketInfo {
         part_count,
         stage_info,
         stages,
+        final_altitude,
     }
 }

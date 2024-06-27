@@ -131,7 +131,7 @@ pub fn print_rocket(stages: &[Stage]) {
             print!("{} ", part.name);
         }
         if it.peek().is_some() {
-            print!(" // ");
+            print!("// ");
         }
     }
 }
@@ -148,9 +148,12 @@ const PART_LVT30: Part = Part::new("LV-T30", 1.25, Engine
     {thrust_asl: 205.16, thrust_vac: 240.0, isp_asl: 265.0, isp_vac: 310.0 });
 const PART_LVT45: Part = Part::new("LV-T45", 1.50, Engine
     {thrust_asl: 167.97, thrust_vac: 215.0, isp_asl: 250.0, isp_vac: 320.0 });
+const PART_LV909: Part = Part::new("LV-909", 0.50, Engine
+    {thrust_asl: 14.78, thrust_vac: 60.0, isp_asl: 85.0, isp_vac: 345.0 });
 const PART_FLT100: Part = Part::new("FL-T100", 0.0625, Tank{ fuel: 45.0 });
 const PART_FLT200: Part = Part::new("FL-T200", 0.125, Tank{ fuel: 90.0 });
 const PART_FLT400: Part = Part::new("FL-T400", 0.25, Tank{ fuel: 180.0 });
+const PART_FLT800: Part = Part::new("FL-T800", 0.50, Tank{ fuel: 360.0 });
 const PART_MK1_POD: Part = Part::new("Mk1 Command Pod", 0.84, CommandPod);
 const PART_MK16_CHUTE: Part = Part::new("Mk16 Parachute", 0.1, Parachute);
 
@@ -162,9 +165,11 @@ pub const PART_CATALOGUE: &[Part] = &[
     PART_BACC,
     PART_LVT30,
     PART_LVT45,
+    PART_LV909,
     PART_FLT100,
     PART_FLT200,
     PART_FLT400,
+    PART_FLT800,
     PART_MK1_POD,
     PART_MK16_CHUTE,
 ];
