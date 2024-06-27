@@ -8,7 +8,6 @@ mod vector;
 mod kerbin;
 mod integrator;
 
-use std::env::current_exe;
 use std::fmt::Debug;
 
 use clap::Parser;

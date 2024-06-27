@@ -30,7 +30,7 @@ DELTA-V: 4541m/s | TWR: 2.0940354 | TWR (2. STAGE): 1.9678526
  BURNOUT ALTITUDE: 156km
  BURNOUT VELOCITY: 3653m/s
 
-============= ROCKET ============
+============ ROCKET ============
       LAUNCH MASS: 17.92t
           DELTA-V: 4541m/s
        PART COUNT: 13

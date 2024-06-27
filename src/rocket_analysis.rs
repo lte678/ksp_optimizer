@@ -51,7 +51,7 @@ pub fn print_stage_summary(stage_info: &StageInfo, header: &str) {
 
 
 pub fn print_rocket_summary(rocket_info: &RocketInfo) {
-    println!("============= ROCKET ============");
+    println!("============ ROCKET ============");
     println!("      LAUNCH MASS: {:.2}t", rocket_info.launch_mass);
     println!("          DELTA-V: {}m/s", rocket_info.delta_v as i32);
     println!("       PART COUNT: {}", rocket_info.part_count);
